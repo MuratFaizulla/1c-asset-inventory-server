@@ -19,7 +19,7 @@ Backend-сервер для учёта и инвентаризации осно�
 ## Архитектура
 
 <p align="center">
-  <img src="./docs/architecture.svg" alt="Server Architecture" width="800" />
+  <img src="./docs/express_server_architecture.svg" alt="Server Architecture" width="800" />
 </p>
 
 ---
