@@ -373,5 +373,6 @@ pm2 env 0
 
 ## Лицензия
 
-MIT#   1 c - a s s e t - i n v e n t o r y - s e r v e r  
+MIT#   1 c - a s s e t - i n v e n t o r y - s e r v e r 
+ 
  
