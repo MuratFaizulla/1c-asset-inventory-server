@@ -1,0 +1,44 @@
+# ─── Dependencies ────────────────────────────────────
+node_modules/
+
+# ─── Environment ─────────────────────────────────────
+.env
+.env.local
+.env.production
+
+# ─── Database ────────────────────────────────────────
+prisma/*.db
+prisma/*.db-journal
+prisma/*.db-shm
+prisma/*.db-wal
+
+# ─── Prisma generated ────────────────────────────────
+node_modules/.prisma/
+
+# ─── Uploads ─────────────────────────────────────────
+uploads/*
+!uploads/.gitkeep
+
+# ─── Logs ────────────────────────────────────────────
+logs/*
+!logs/.gitkeep
+*.log
+npm-debug.log*
+
+# ─── PM2 ─────────────────────────────────────────────
+.pm2/
+
+# ─── OS files ────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ─── Editor ──────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ─── Build ───────────────────────────────────────────
+dist/
+build/

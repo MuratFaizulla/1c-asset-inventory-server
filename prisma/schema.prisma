@@ -1,0 +1,123 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./inventory.db"
+}
+
+model Organization {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  createdAt DateTime @default(now())
+
+  assets    Asset[]
+  sessions  InventorySession[]
+}
+
+model ResponsiblePerson {
+  id        Int      @id @default(autoincrement())
+  fullName  String
+  createdAt DateTime @default(now())
+
+  assets    Asset[]
+}
+
+model Location {
+  id        Int      @id @default(autoincrement())
+  name      String
+  createdAt DateTime @default(now())
+
+  assets    Asset[]
+  sessions  InventorySession[]
+}
+
+model Employee {
+  id        Int      @id @default(autoincrement())
+  fullName  String
+  createdAt DateTime @default(now())
+
+  assets    Asset[]
+}
+
+model Asset {
+  id                  Int      @id @default(autoincrement())
+
+  organization        Organization      @relation(fields: [organizationId], references: [id])
+  organizationId      Int
+  responsiblePerson   ResponsiblePerson @relation(fields: [responsiblePersonId], references: [id])
+  responsiblePersonId Int
+  location            Location          @relation(fields: [locationId], references: [id])
+  locationId          Int
+  employee            Employee?         @relation(fields: [employeeId], references: [id])
+  employeeId          Int?
+
+  assetType           String
+  name                String
+  assetFaType         String?
+  barcode             String?   @unique
+  inventoryNumber     String    @unique
+  factoryNumber       String?
+  accountingAccount   String?
+
+  bookValue           Float?
+  residualValue       Float?
+  depreciationPercent Float?
+  acceptanceDate      DateTime?
+  depreciationMonths  Int?
+  depreciationEndYear Int?
+  assignmentDate      DateTime?
+
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  inventoryItems      InventoryItem[]
+}
+
+// status: IN_PROGRESS | COMPLETED | CANCELLED
+model InventorySession {
+  id             Int       @id @default(autoincrement())
+  name           String
+  status         String    @default("IN_PROGRESS")
+
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+  organizationId Int?
+  location       Location?     @relation(fields: [locationId], references: [id])
+  locationId     Int?
+
+  startedAt      DateTime  @default(now())
+  finishedAt     DateTime?
+  createdBy      String?
+
+  items          InventoryItem[]
+}
+
+// status: PENDING | FOUND | NOT_FOUND | MISPLACED
+model InventoryItem {
+  id        Int      @id @default(autoincrement())
+
+  session   InventorySession @relation(fields: [sessionId], references: [id])
+  sessionId Int
+
+  asset     Asset    @relation(fields: [assetId], references: [id])
+  assetId   Int
+
+  status    String    @default("PENDING")
+  note      String?
+  scannedAt DateTime?
+  scannedBy String?
+
+  @@unique([sessionId, assetId])
+}
+
+// Фото ОС — хранится по имени ОС (одно фото на все ОС с одинаковым названием)
+model AssetPhoto {
+  id        Int      @id @default(autoincrement())
+  nameKey   String   @unique   // нормализованное имя ОС (ключ)
+  assetName String             // оригинальное имя для отображения
+  mimeType  String   @default("image/jpeg")
+  data      String             // base64 данные фото
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
