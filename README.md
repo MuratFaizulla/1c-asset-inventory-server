@@ -310,15 +310,16 @@ npm run db:deploy
 # 7. Запустить
 npm run pm2:start
 
-# 8. Автозапуск при перезагрузке
+# 8. Автозапуск при перезагрузке сервера
 pm2 startup
+# Скопировать и выполнить команду которую выдаст PM2
 pm2 save
 
-# 9. Открыть порт
+# 9. Открыть порт в фаерволе
 sudo ufw allow 8888
 ```
 
-### Обновление кода
+### Обновление кода на Linux
 
 ```bash
 cd /var/www/inventory-server
@@ -330,14 +331,65 @@ npm run pm2:restart
 
 ---
 
-## Деплой на Windows (локально)
+## Деплой на Windows
 
-```bash
+### Первый раз
+
+```powershell
+# 1. Установить Node.js 18+ — скачать с https://nodejs.org
+
+# 2. Установить PM2 и автозапуск
 npm install -g pm2
 npm install -g pm2-windows-startup
 pm2-startup install
+
+# 3. Клонировать репозиторий
+git clone <repo>
+cd inventory-server
+
+# 4. Создать папки
+New-Item -ItemType Directory -Force -Path "logs"
+New-Item -ItemType Directory -Force -Path "uploads"
+
+# 5. Установить зависимости
+npm install
+
+# 6. Создать .env
+copy .env.example .env
+# Открыть и заполнить .env в редакторе
+
+# 7. Применить миграции
+npm run db:generate
+npm run db:deploy
+
+# 8. Запустить
 npm run pm2:start
+
+# 9. Сохранить процессы для автозапуска
 pm2 save
+```
+
+### Обновление кода на Windows
+
+```powershell
+cd C:\путь\до\inventory-server
+git pull
+npm install
+npm run db:deploy
+npm run pm2:restart
+```
+
+### Если порт занят на Windows
+
+```powershell
+# Найти процесс на порту 8888
+netstat -ano | findstr :8888
+
+# Убить процесс (заменить XXXX на найденный PID)
+taskkill /PID XXXX /F
+
+# Или просто перезапустить через PM2
+npm run pm2:restart
 ```
 
 ---
