@@ -82,12 +82,75 @@ export const getSessionById = async (req, res) => {
 }
 
 // ИСПРАВЛЕНО: session + asset грузим параллельно → экономим ~100-150ms на каждом скане
+// export const scanItem = async (req, res) => {
+//   try {
+//     const { barcode, scannedBy, note } = req.body
+//     const sessionId = Number(req.params.id)
+
+//     // Параллельно грузим сессию и ищем ОС — не ждём друг друга
+//     const [session, asset] = await Promise.all([
+//       prisma.inventorySession.findUnique({
+//         where: { id: sessionId },
+//         include: { location: true }
+//       }),
+//       prisma.asset.findFirst({
+//         where: { OR: [{ barcode }, { inventoryNumber: barcode }] },
+//         include: { location: true, responsiblePerson: true, employee: true }
+//       })
+//     ])
+
+//     if (!session) return res.status(404).json({ error: 'Сессия не найдена' })
+//     if (!asset)   return res.status(404).json({ error: 'ОС не найдено в базе', barcode })
+
+//     // Проверяем — уже отсканирован в этой сессии?
+//     const existing = await prisma.inventoryItem.findUnique({
+//       where: { sessionId_assetId: { sessionId, assetId: asset.id } }
+//     })
+//     if (existing && existing.status !== 'PENDING') {
+//       return res.json({
+//         item:            existing,
+//         asset,
+//         status:          existing.status,
+//         alreadyScanned:  true,
+//         isWrongLocation: existing.status === 'MISPLACED',
+//       })
+//     }
+
+//     // Определяем статус: MISPLACED если ОС числится в другом кабинете
+//     let status   = 'FOUND'
+//     let scanNote = note || null
+//     const isWrongLocation = session.locationId && asset.locationId !== session.locationId
+
+//     if (isWrongLocation) {
+//       status   = 'MISPLACED'
+//       scanNote = `Найдено в "${session.location?.name}", числится в "${asset.location.name}"`
+//     }
+
+//     const item = await prisma.inventoryItem.upsert({
+//       where:  { sessionId_assetId: { sessionId, assetId: asset.id } },
+//       update: { status, note: scanNote, scannedAt: new Date(), scannedBy },
+//       create: { sessionId, assetId: asset.id, status, note: scanNote, scannedAt: new Date(), scannedBy },
+//       include: { asset: { include: { location: true } } }
+//     })
+
+//     res.json({
+//       item,
+//       asset,
+//       status,
+//       alreadyScanned:   false,
+//       isWrongLocation,
+//       expectedLocation: asset.location?.name,
+//       actualLocation:   session.location?.name,
+//     })
+//   } catch (err) {
+//     res.status(500).json({ error: err.message })
+//   }
+// }
 export const scanItem = async (req, res) => {
   try {
     const { barcode, scannedBy, note } = req.body
     const sessionId = Number(req.params.id)
 
-    // Параллельно грузим сессию и ищем ОС — не ждём друг друга
     const [session, asset] = await Promise.all([
       prisma.inventorySession.findUnique({
         where: { id: sessionId },
@@ -106,6 +169,7 @@ export const scanItem = async (req, res) => {
     const existing = await prisma.inventoryItem.findUnique({
       where: { sessionId_assetId: { sessionId, assetId: asset.id } }
     })
+
     if (existing && existing.status !== 'PENDING') {
       return res.json({
         item:            existing,
@@ -113,10 +177,16 @@ export const scanItem = async (req, res) => {
         status:          existing.status,
         alreadyScanned:  true,
         isWrongLocation: existing.status === 'MISPLACED',
+        // ── Данные первого сканирования ──────────────────────────────────
+        previousScan: {
+          scannedAt:  existing.scannedAt,
+          scannedBy:  existing.scannedBy,
+          note:       existing.note,
+        },
       })
     }
 
-    // Определяем статус: MISPLACED если ОС числится в другом кабинете
+    // Определяем статус
     let status   = 'FOUND'
     let scanNote = note || null
     const isWrongLocation = session.locationId && asset.locationId !== session.locationId
@@ -146,6 +216,8 @@ export const scanItem = async (req, res) => {
     res.status(500).json({ error: err.message })
   }
 }
+
+
 
 export const cancelItem = async (req, res) => {
   try {
@@ -437,6 +509,62 @@ export const deleteSession = async (req, res) => {
     ])
 
     res.json({ deleted: true })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+}
+
+
+
+// POST /api/inventory/:id/add-assets — добавить новые ОС в существующую сессию
+export const addAssetsToSession = async (req, res) => {
+  try {
+    const sessionId = Number(req.params.id)
+
+    // Проверяем что сессия существует и ещё в процессе
+    const session = await prisma.inventorySession.findUnique({
+      where: { id: sessionId },
+      include: { items: { select: { assetId: true } } }
+    })
+    if (!session) return res.status(404).json({ error: 'Сессия не найдена' })
+    if (session.status === 'COMPLETED') {
+      return res.status(400).json({ error: 'Сессия уже завершена' })
+    }
+
+    // ID ОС которые уже есть в сессии
+    const existingAssetIds = new Set(session.items.map(i => i.assetId))
+
+    // Фильтр такой же как при создании сессии
+    const whereAssets = {}
+    if (session.locationId)     whereAssets.locationId     = session.locationId
+    if (session.organizationId) whereAssets.organizationId = session.organizationId
+
+    const allAssets = await prisma.asset.findMany({
+      where: whereAssets,
+      select: { id: true }
+    })
+
+    // Только новые — которых ещё нет в сессии
+    const newAssets = allAssets.filter(a => !existingAssetIds.has(a.id))
+
+    if (newAssets.length === 0) {
+      return res.json({ added: 0, message: 'Нет новых ОС для добавления' })
+    }
+
+    // Добавляем новые ОС со статусом PENDING
+    await prisma.inventoryItem.createMany({
+      data: newAssets.map(a => ({
+        sessionId,
+        assetId: a.id,
+        status:  'PENDING'
+      })),
+      skipDuplicates: true,
+    })
+
+    res.json({
+      added:   newAssets.length,
+      message: `Добавлено ${newAssets.length} новых ОС в сессию`
+    })
   } catch (err) {
     res.status(500).json({ error: err.message })
   }

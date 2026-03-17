@@ -7,6 +7,10 @@ export const previewImport = async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'Файл не загружен' })
 
+    // Режим: partial — частичный (не показывает лишних)
+    //         full    — полный (показывает ОС которых нет в файле)
+    const mode = req.body.mode || 'partial'
+
     const { parsed, skipped, total } = await parseAndBuildMaps(req.file.buffer)
 
     // Загружаем существующие ОС по инвентарным номерам из файла
@@ -16,16 +20,19 @@ export const previewImport = async (req, res) => {
       include: {
         location:          true,
         responsiblePerson: true,
-        employee:          true,  // нужен для humanizeChanges — показывает имя вместо id
+        employee:          true,
       }
     })
     const existingMap = Object.fromEntries(existingAssets.map(a => [a.inventoryNumber, a]))
 
-    const newAssets     = []
-    const changedAssets = []
+    const newAssets       = []
+    const changedAssets   = []
+    const unchangedAssets = []  // ОС которые уже актуальны
+    let   unchanged       = 0
 
     for (const item of parsed) {
       const existing = existingMap[item.inventoryNumber]
+
       if (!existing) {
         // Новая ОС — ещё не в базе
         newAssets.push({
@@ -38,48 +45,81 @@ export const previewImport = async (req, res) => {
       } else {
         // Существующая ОС — проверяем изменения
         const changes = getChanges(existing, item)
-        if (changes.length > 0) {
-          const humanChanges = humanizeChanges(changes, existing, item)
 
-          // ИСПРАВЛЕНО: пропускаем если все изменения оказались "ложными"
-          // (ID изменился но human-readable имя то же самое)
-          if (humanChanges.length === 0) continue
-
-          changedAssets.push({
-            id:              existing.id,
+        if (changes.length === 0) {
+          // Уже актуальная — ничего менять не нужно
+          unchanged++
+          unchangedAssets.push({
             inventoryNumber: item.inventoryNumber,
             name:            item.name,
             location:        item._locationName,
             mol:             item._molName,
             employee:        item._employeeName !== '—' ? item._employeeName : null,
-            changes:         humanChanges,
           })
+          continue
         }
+
+        const humanChanges = humanizeChanges(changes, existing, item)
+
+        if (humanChanges.length === 0) {
+          // Технические изменения ID но human-readable одинаковое — считаем как актуальную
+          unchanged++
+          unchangedAssets.push({
+            inventoryNumber: item.inventoryNumber,
+            name:            item.name,
+            location:        item._locationName,
+            mol:             item._molName,
+            employee:        item._employeeName !== '—' ? item._employeeName : null,
+          })
+          continue
+        }
+
+        changedAssets.push({
+          id:              existing.id,
+          inventoryNumber: item.inventoryNumber,
+          name:            item.name,
+          location:        item._locationName,
+          mol:             item._molName,
+          employee:        item._employeeName !== '—' ? item._employeeName : null,
+          changes:         humanChanges,
+        })
       }
     }
 
-    // Ищем ОС в БД которых нет в файле — потенциальные "лишние"
-    const importedNumbers = new Set(invNumbers)
-    const allInDb = await prisma.asset.findMany({
-      select: {
-        id:              true,
-        inventoryNumber: true,
-        name:            true,
-        location:          { select: { name: true } },
-        responsiblePerson: { select: { fullName: true } },
-      }
-    })
-    const orphaned = allInDb
-      .filter(a => !importedNumbers.has(a.inventoryNumber))
-      .map(a => ({
-        id:              a.id,
-        inventoryNumber: a.inventoryNumber,
-        name:            a.name,
-        location:        a.location?.name             || '—',
-        mol:             a.responsiblePerson?.fullName || '—',
-      }))
+    // Лишние — только в полном режиме
+    let orphaned = []
+    if (mode === 'full') {
+      const importedNumbers = new Set(invNumbers)
+      const allInDb = await prisma.asset.findMany({
+        select: {
+          id:              true,
+          inventoryNumber: true,
+          name:            true,
+          location:          { select: { name: true } },
+          responsiblePerson: { select: { fullName: true } },
+        }
+      })
+      orphaned = allInDb
+        .filter(a => !importedNumbers.has(a.inventoryNumber))
+        .map(a => ({
+          id:              a.id,
+          inventoryNumber: a.inventoryNumber,
+          name:            a.name,
+          location:        a.location?.name             || '—',
+          mol:             a.responsiblePerson?.fullName || '—',
+        }))
+    }
 
-    res.json({ total, skipped, newAssets, changedAssets, orphaned })
+    res.json({
+      total,
+      skipped,
+      unchanged,
+      mode,
+      newAssets,
+      changedAssets,
+      unchangedAssets,  // список актуальных ОС для отображения
+      orphaned,
+    })
   } catch (err) {
     res.status(500).json({ error: err.message })
   }

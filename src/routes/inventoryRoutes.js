@@ -14,6 +14,7 @@ import {
   exportSession,
   exportRelocated,
   deleteSession,
+  addAssetsToSession,
 } from '../controllers/inventoryController.js'
 
 const router = Router()
@@ -59,5 +60,8 @@ router.get('/:id', getSessionById)
 
 // DELETE тоже в конце
 router.delete('/:id', deleteSession)
+
+// Добавить новые ОС которых не было при создании сессии
+router.post('/:id/add-assets', addAssetsToSession)
 
 export default router

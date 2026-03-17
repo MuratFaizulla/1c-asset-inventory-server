@@ -30,8 +30,7 @@ export function parseNumber(val) {
   return isNaN(n) ? null : n
 }
 
-// Нормализует строку для сравнения — убирает пробелы и приводит Unicode к единой форме
-// Казахские символы могут храниться в разных Unicode-формах — NFC устраняет это
+// Нормализует строку для сравнения
 export function normalize(val) {
   if (val === null || val === undefined) return ''
   return String(val).trim().replace(/\s+/g, ' ').normalize('NFC')
@@ -61,9 +60,7 @@ export function getChanges(existing, incoming) {
 }
 
 // Переводит технические изменения в человекочитаемый вид
-// ИСПРАВЛЕНО: пропускает "ложные" изменения где human-readable значения одинаковые
-// Это случается когда ID изменился (null → 128) но имя то же самое,
-// или когда казахские символы в БД и файле хранятся в разных Unicode-формах
+// Пропускает "ложные" изменения где human-readable значения одинаковые
 export function humanizeChanges(changes, existing, item) {
   const result = []
 
