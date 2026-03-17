@@ -82,70 +82,7 @@ export const getSessionById = async (req, res) => {
 }
 
 // ИСПРАВЛЕНО: session + asset грузим параллельно → экономим ~100-150ms на каждом скане
-// export const scanItem = async (req, res) => {
-//   try {
-//     const { barcode, scannedBy, note } = req.body
-//     const sessionId = Number(req.params.id)
 
-//     // Параллельно грузим сессию и ищем ОС — не ждём друг друга
-//     const [session, asset] = await Promise.all([
-//       prisma.inventorySession.findUnique({
-//         where: { id: sessionId },
-//         include: { location: true }
-//       }),
-//       prisma.asset.findFirst({
-//         where: { OR: [{ barcode }, { inventoryNumber: barcode }] },
-//         include: { location: true, responsiblePerson: true, employee: true }
-//       })
-//     ])
-
-//     if (!session) return res.status(404).json({ error: 'Сессия не найдена' })
-//     if (!asset)   return res.status(404).json({ error: 'ОС не найдено в базе', barcode })
-
-//     // Проверяем — уже отсканирован в этой сессии?
-//     const existing = await prisma.inventoryItem.findUnique({
-//       where: { sessionId_assetId: { sessionId, assetId: asset.id } }
-//     })
-//     if (existing && existing.status !== 'PENDING') {
-//       return res.json({
-//         item:            existing,
-//         asset,
-//         status:          existing.status,
-//         alreadyScanned:  true,
-//         isWrongLocation: existing.status === 'MISPLACED',
-//       })
-//     }
-
-//     // Определяем статус: MISPLACED если ОС числится в другом кабинете
-//     let status   = 'FOUND'
-//     let scanNote = note || null
-//     const isWrongLocation = session.locationId && asset.locationId !== session.locationId
-
-//     if (isWrongLocation) {
-//       status   = 'MISPLACED'
-//       scanNote = `Найдено в "${session.location?.name}", числится в "${asset.location.name}"`
-//     }
-
-//     const item = await prisma.inventoryItem.upsert({
-//       where:  { sessionId_assetId: { sessionId, assetId: asset.id } },
-//       update: { status, note: scanNote, scannedAt: new Date(), scannedBy },
-//       create: { sessionId, assetId: asset.id, status, note: scanNote, scannedAt: new Date(), scannedBy },
-//       include: { asset: { include: { location: true } } }
-//     })
-
-//     res.json({
-//       item,
-//       asset,
-//       status,
-//       alreadyScanned:   false,
-//       isWrongLocation,
-//       expectedLocation: asset.location?.name,
-//       actualLocation:   session.location?.name,
-//     })
-//   } catch (err) {
-//     res.status(500).json({ error: err.message })
-//   }
-// }
 export const scanItem = async (req, res) => {
   try {
     const { barcode, scannedBy, note } = req.body
@@ -521,7 +458,6 @@ export const addAssetsToSession = async (req, res) => {
   try {
     const sessionId = Number(req.params.id)
 
-    // Проверяем что сессия существует и ещё в процессе
     const session = await prisma.inventorySession.findUnique({
       where: { id: sessionId },
       include: { items: { select: { assetId: true } } }
@@ -551,20 +487,110 @@ export const addAssetsToSession = async (req, res) => {
       return res.json({ added: 0, message: 'Нет новых ОС для добавления' })
     }
 
-    // Добавляем новые ОС со статусом PENDING
-    await prisma.inventoryItem.createMany({
-      data: newAssets.map(a => ({
-        sessionId,
-        assetId: a.id,
-        status:  'PENDING'
-      })),
-      skipDuplicates: true,
-    })
+    // SQLite не поддерживает createMany — создаём по одному
+    for (const a of newAssets) {
+      try {
+        await prisma.inventoryItem.create({
+          data: { sessionId, assetId: a.id, status: 'PENDING' }
+        })
+      } catch (e) {
+        // пропускаем дубли
+      }
+    }
 
     res.json({
       added:   newAssets.length,
       message: `Добавлено ${newAssets.length} новых ОС в сессию`
     })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+}
+
+// GET /api/inventory/:id/stats-by-location — статистика по кабинетам внутри сессии
+export const getStatsByLocation = async (req, res) => {
+  try {
+    const sessionId = Number(req.params.id)
+
+    const items = await prisma.inventoryItem.findMany({
+      where:   { sessionId },
+      include: { asset: { include: { location: true } } }
+    })
+
+    const map = new Map()
+
+    for (const item of items) {
+      const locName = item.asset.location?.name || 'Не указано'
+      const locId   = item.asset.locationId     || 0
+
+      if (!map.has(locId)) {
+        map.set(locId, {
+          locationId:    locId,
+          locationName:  locName,
+          total:         0,
+          found:         0,
+          notFound:      0,
+          misplaced:     0,
+          pending:       0,
+          pendingAssets: [],
+        })
+      }
+
+      const s = map.get(locId)
+      s.total++
+
+      if (item.status === 'FOUND')     s.found++
+      if (item.status === 'NOT_FOUND') s.notFound++
+      if (item.status === 'MISPLACED') s.misplaced++
+      if (item.status === 'PENDING') {
+        s.pending++
+        s.pendingAssets.push({
+          id:              item.asset.id,
+          name:            item.asset.name,
+          inventoryNumber: item.asset.inventoryNumber,
+          barcode:         item.asset.barcode ?? null,
+        })
+      }
+    }
+
+    const result = [...map.values()]
+      .map(s => ({
+        ...s,
+        progress: Math.round(
+          ((s.found + s.notFound + s.misplaced) / s.total) * 100
+        ),
+      }))
+      .sort((a, b) => b.total - a.total)
+
+    res.json(result)
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+}
+
+
+
+
+
+
+//PATCH /:id/reopen — переоткрыть завершённую сессию Бывает нужно когда завершили случайно.
+export const reopenSession = async (req, res) => {
+  try {
+    const sessionId = Number(req.params.id)
+
+    // Возвращаем все NOT_FOUND обратно в PENDING
+    await prisma.$transaction([
+      prisma.inventoryItem.updateMany({
+        where: { sessionId, status: 'NOT_FOUND' },
+        data:  { status: 'PENDING' }
+      }),
+      prisma.inventorySession.update({
+        where: { id: sessionId },
+        data:  { status: 'IN_PROGRESS', finishedAt: null }
+      })
+    ])
+
+    res.json({ reopened: true })
   } catch (err) {
     res.status(500).json({ error: err.message })
   }

@@ -15,6 +15,7 @@ import {
   exportRelocated,
   deleteSession,
   addAssetsToSession,
+  getStatsByLocation,
 } from '../controllers/inventoryController.js'
 
 const router = Router()
@@ -63,5 +64,9 @@ router.delete('/:id', deleteSession)
 
 // Добавить новые ОС которых не было при создании сессии
 router.post('/:id/add-assets', addAssetsToSession)
+
+
+// Статистика по кабинетам — для отображения прогресса по помещениям
+router.get('/:id/stats/by-location', getStatsByLocation)
 
 export default router
