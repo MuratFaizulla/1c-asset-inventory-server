@@ -507,14 +507,82 @@ export const addAssetsToSession = async (req, res) => {
   }
 }
 
-// GET /api/inventory/:id/stats-by-location — статистика по кабинетам внутри сессии
+// // GET /api/inventory/:id/stats-by-location — статистика по кабинетам внутри сессии
+// export const getStatsByLocation = async (req, res) => {
+//   try {
+//     const sessionId = Number(req.params.id)
+
+//     const items = await prisma.inventoryItem.findMany({
+//       where:   { sessionId },
+//       include: { asset: { include: { location: true } } }
+//     })
+
+//     const map = new Map()
+
+//     for (const item of items) {
+//       const locName = item.asset.location?.name || 'Не указано'
+//       const locId   = item.asset.locationId     || 0
+
+//       if (!map.has(locId)) {
+//         map.set(locId, {
+//           locationId:    locId,
+//           locationName:  locName,
+//           total:         0,
+//           found:         0,
+//           notFound:      0,
+//           misplaced:     0,
+//           pending:       0,
+//           pendingAssets: [],
+//         })
+//       }
+
+//       const s = map.get(locId)
+//       s.total++
+
+//       if (item.status === 'FOUND')     s.found++
+//       if (item.status === 'NOT_FOUND') s.notFound++
+//       if (item.status === 'MISPLACED') s.misplaced++
+//       if (item.status === 'PENDING') {
+//         s.pending++
+//         s.pendingAssets.push({
+//           id:              item.asset.id,
+//           name:            item.asset.name,
+//           inventoryNumber: item.asset.inventoryNumber,
+//           barcode:         item.asset.barcode ?? null,
+//         })
+//       }
+//     }
+
+//     const result = [...map.values()]
+//       .map(s => ({
+//         ...s,
+//         progress: Math.round(
+//           ((s.found + s.notFound + s.misplaced) / s.total) * 100
+//         ),
+//       }))
+//       .sort((a, b) => b.total - a.total)
+
+//     res.json(result)
+//   } catch (err) {
+//     res.status(500).json({ error: err.message })
+//   }
+// }
+// GET /api/inventory/:id/stats/by-location
 export const getStatsByLocation = async (req, res) => {
   try {
     const sessionId = Number(req.params.id)
 
     const items = await prisma.inventoryItem.findMany({
       where:   { sessionId },
-      include: { asset: { include: { location: true } } }
+      include: {
+        asset: {
+          include: {
+            location:          true,
+            responsiblePerson: true,
+            employee:          true,
+          }
+        }
+      }
     })
 
     const map = new Map()
@@ -525,32 +593,46 @@ export const getStatsByLocation = async (req, res) => {
 
       if (!map.has(locId)) {
         map.set(locId, {
-          locationId:    locId,
-          locationName:  locName,
-          total:         0,
-          found:         0,
-          notFound:      0,
-          misplaced:     0,
-          pending:       0,
-          pendingAssets: [],
+          locationId:   locId,
+          locationName: locName,
+          total:        0,
+          found:        0,
+          notFound:     0,
+          misplaced:    0,
+          pending:      0,
+          // массивы для каждого статуса
+          totalAssets:    [],
+          foundAssets:    [],
+          notFoundAssets: [],
+          misplacedAssets:[],
+          pendingAssets:  [],
         })
       }
 
       const s = map.get(locId)
       s.total++
 
-      if (item.status === 'FOUND')     s.found++
-      if (item.status === 'NOT_FOUND') s.notFound++
-      if (item.status === 'MISPLACED') s.misplaced++
-      if (item.status === 'PENDING') {
-        s.pending++
-        s.pendingAssets.push({
-          id:              item.asset.id,
-          name:            item.asset.name,
-          inventoryNumber: item.asset.inventoryNumber,
-          barcode:         item.asset.barcode ?? null,
-        })
+      // Общие поля для любого актива
+      const assetInfo = {
+        id:                item.asset.id,
+        itemId:            item.id,
+        name:              item.asset.name,
+        inventoryNumber:   item.asset.inventoryNumber,
+        barcode:           item.asset.barcode ?? null,
+        responsiblePerson: item.asset.responsiblePerson?.fullName ?? null,
+        employee:          item.asset.employee?.fullName ?? null,
+        // поля инвентаризации
+        scannedAt:         item.scannedAt ?? null,
+        scannedBy:         item.scannedBy ?? null,
+        note:              item.note ?? null,
       }
+
+      s.totalAssets.push(assetInfo)
+
+      if (item.status === 'FOUND')     { s.found++;    s.foundAssets.push(assetInfo) }
+      if (item.status === 'NOT_FOUND') { s.notFound++; s.notFoundAssets.push(assetInfo) }
+      if (item.status === 'MISPLACED') { s.misplaced++;s.misplacedAssets.push(assetInfo) }
+      if (item.status === 'PENDING')   { s.pending++;  s.pendingAssets.push(assetInfo) }
     }
 
     const result = [...map.values()]
@@ -560,14 +642,18 @@ export const getStatsByLocation = async (req, res) => {
           ((s.found + s.notFound + s.misplaced) / s.total) * 100
         ),
       }))
-      .sort((a, b) => b.total - a.total)
+      // 100% — вниз, остальные сортируем по убыванию total
+      .sort((a, b) => {
+        if (a.progress === 100 && b.progress !== 100) return 1
+        if (b.progress === 100 && a.progress !== 100) return -1
+        return b.total - a.total
+      })
 
     res.json(result)
   } catch (err) {
     res.status(500).json({ error: err.message })
   }
 }
-
 
 
 
