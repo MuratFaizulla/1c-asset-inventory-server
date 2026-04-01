@@ -86,9 +86,12 @@ model InventorySession {
   location       Location?     @relation(fields: [locationId], references: [id])
   locationId     Int?
 
+  assetFaType    String?
+
   startedAt      DateTime  @default(now())
   finishedAt     DateTime?
   createdBy      String?
+
 
   items          InventoryItem[]
 }

@@ -18,11 +18,14 @@ export const getSessions = async (req, res) => {
 
 export const createSession = async (req, res) => {
   try {
-    const { name, locationId, organizationId, createdBy } = req.body
+    const { name, locationId, organizationId, assetNames, createdBy } = req.body
+    // assetNames — массив наименований, либо undefined (все ОС)
+    const namesArr = Array.isArray(assetNames) && assetNames.length > 0 ? assetNames : null
 
     const whereAssets = {}
     if (locationId)     whereAssets.locationId     = Number(locationId)
     if (organizationId) whereAssets.organizationId = Number(organizationId)
+    if (namesArr)       whereAssets.name           = { in: namesArr }
 
     const assets = await prisma.asset.findMany({ where: whereAssets, select: { id: true } })
 
@@ -31,6 +34,7 @@ export const createSession = async (req, res) => {
         name,
         locationId:     locationId     ? Number(locationId)     : null,
         organizationId: organizationId ? Number(organizationId) : null,
+        assetFaType:    namesArr       ? JSON.stringify(namesArr) : null,
         createdBy,
         items: { create: assets.map(a => ({ assetId: a.id, status: 'PENDING' })) }
       },
@@ -474,6 +478,14 @@ export const addAssetsToSession = async (req, res) => {
     const whereAssets = {}
     if (session.locationId)     whereAssets.locationId     = session.locationId
     if (session.organizationId) whereAssets.organizationId = session.organizationId
+    if (session.assetFaType) {
+      try {
+        const arr = JSON.parse(session.assetFaType)
+        if (Array.isArray(arr) && arr.length > 0) whereAssets.name = { in: arr }
+      } catch {
+        whereAssets.name = session.assetFaType
+      }
+    }
 
     const allAssets = await prisma.asset.findMany({
       where: whereAssets,
@@ -507,66 +519,8 @@ export const addAssetsToSession = async (req, res) => {
   }
 }
 
-// // GET /api/inventory/:id/stats-by-location — статистика по кабинетам внутри сессии
-// export const getStatsByLocation = async (req, res) => {
-//   try {
-//     const sessionId = Number(req.params.id)
 
-//     const items = await prisma.inventoryItem.findMany({
-//       where:   { sessionId },
-//       include: { asset: { include: { location: true } } }
-//     })
 
-//     const map = new Map()
-
-//     for (const item of items) {
-//       const locName = item.asset.location?.name || 'Не указано'
-//       const locId   = item.asset.locationId     || 0
-
-//       if (!map.has(locId)) {
-//         map.set(locId, {
-//           locationId:    locId,
-//           locationName:  locName,
-//           total:         0,
-//           found:         0,
-//           notFound:      0,
-//           misplaced:     0,
-//           pending:       0,
-//           pendingAssets: [],
-//         })
-//       }
-
-//       const s = map.get(locId)
-//       s.total++
-
-//       if (item.status === 'FOUND')     s.found++
-//       if (item.status === 'NOT_FOUND') s.notFound++
-//       if (item.status === 'MISPLACED') s.misplaced++
-//       if (item.status === 'PENDING') {
-//         s.pending++
-//         s.pendingAssets.push({
-//           id:              item.asset.id,
-//           name:            item.asset.name,
-//           inventoryNumber: item.asset.inventoryNumber,
-//           barcode:         item.asset.barcode ?? null,
-//         })
-//       }
-//     }
-
-//     const result = [...map.values()]
-//       .map(s => ({
-//         ...s,
-//         progress: Math.round(
-//           ((s.found + s.notFound + s.misplaced) / s.total) * 100
-//         ),
-//       }))
-//       .sort((a, b) => b.total - a.total)
-
-//     res.json(result)
-//   } catch (err) {
-//     res.status(500).json({ error: err.message })
-//   }
-// }
 // GET /api/inventory/:id/stats/by-location
 export const getStatsByLocation = async (req, res) => {
   try {

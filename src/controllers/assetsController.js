@@ -90,6 +90,21 @@ export const scanBarcode = async (req, res) => {
   }
 }
 
+// GET /api/assets/fa-types — уникальные виды ОС
+export const getFaTypes = async (req, res) => {
+  try {
+    const result = await prisma.asset.findMany({
+      where:    { assetFaType: { not: null } },
+      select:   { assetFaType: true },
+      distinct: ['assetFaType'],
+      orderBy:  { assetFaType: 'asc' },
+    })
+    res.json(result.map(r => r.assetFaType).filter(Boolean))
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+}
+
 // GET /api/assets/grouped
 export const getGrouped = async (req, res) => {
   try {

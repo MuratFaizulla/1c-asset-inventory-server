@@ -3,6 +3,7 @@ import {
   getAssets,
   scanBarcode,
   getGrouped,
+  getFaTypes,
   getByNameLocations,
   getAssetById,
   getAssetHistory,
@@ -18,6 +19,9 @@ router.get('/scan/:barcode', scanBarcode)
 
 // Список уникальных ОС сгруппированных по названию с количеством
 router.get('/grouped', getGrouped)
+
+// Уникальные виды ОС (assetFaType) для фильтра инвентаризации
+router.get('/fa-types', getFaTypes)
 
 // Разбивка конкретного ОС по кабинетам (сколько штук в каком кабинете)
 router.get('/by-name/:name/locations', getByNameLocations)
