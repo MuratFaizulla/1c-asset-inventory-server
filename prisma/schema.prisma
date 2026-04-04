@@ -18,7 +18,7 @@ model Organization {
 
 model ResponsiblePerson {
   id        Int      @id @default(autoincrement())
-  fullName  String
+  fullName  String   @unique
   createdAt DateTime @default(now())
 
   assets    Asset[]
@@ -26,7 +26,7 @@ model ResponsiblePerson {
 
 model Location {
   id        Int      @id @default(autoincrement())
-  name      String
+  name      String   @unique
   createdAt DateTime @default(now())
 
   assets    Asset[]
@@ -35,7 +35,7 @@ model Location {
 
 model Employee {
   id        Int      @id @default(autoincrement())
-  fullName  String
+  fullName  String   @unique
   createdAt DateTime @default(now())
 
   assets    Asset[]
@@ -110,6 +110,7 @@ model InventoryItem {
   note      String?
   scannedAt DateTime?
   scannedBy String?
+  checkedAt DateTime?
 
   @@unique([sessionId, assetId])
 }

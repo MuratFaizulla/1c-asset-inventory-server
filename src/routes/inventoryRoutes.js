@@ -6,6 +6,7 @@ import {
   scanItem,
   cancelItem,
   updateItem,
+  toggleItemCheck,
   updateAssetLocation,
   finishSession,
   relocateAll,
@@ -32,6 +33,9 @@ router.post('/:id/scan', scanItem)
 // Отменить сканирование — вернуть item в PENDING
 router.patch('/:id/item/:itemId/cancel', cancelItem)
 
+// Переключить отметку "внесено в 1С" (checkedAt)
+router.patch('/:id/item/:itemId/check', toggleItemCheck)
+
 // Обновить статус или примечание конкретного item
 router.patch('/:id/item/:itemId', updateItem)
 
@@ -56,17 +60,16 @@ router.get('/:id/export', exportSession)
 // Экспорт только перемещённых ОС в Excel
 router.get('/:id/export-relocated', exportRelocated)
 
+// Добавить новые ОС которых не было при создании сессии
+router.post('/:id/add-assets', addAssetsToSession)
+
+// Статистика по кабинетам — для отображения прогресса по помещениям
+router.get('/:id/stats/by-location', getStatsByLocation)
+
 // ВАЖНО: /:id всегда в конце — иначе Express глотает все маршруты выше
 router.get('/:id', getSessionById)
 
 // DELETE тоже в конце
 router.delete('/:id', deleteSession)
-
-// Добавить новые ОС которых не было при создании сессии
-router.post('/:id/add-assets', addAssetsToSession)
-
-
-// Статистика по кабинетам — для отображения прогресса по помещениям
-router.get('/:id/stats/by-location', getStatsByLocation)
 
 export default router

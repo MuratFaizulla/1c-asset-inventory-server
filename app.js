@@ -17,7 +17,18 @@ const PORT = process.env.PORT || 8888
 const isDev = process.env.NODE_ENV !== 'production'
 
 // ─── Middleware ───────────────────────────────────────────────
-app.use(cors({ origin: '*' }))
+const allowedOrigins = process.env.CORS_ORIGIN
+  ? process.env.CORS_ORIGIN.split(',').map(o => o.trim())
+  : ['http://localhost:5173']
+
+app.use(cors({
+  origin: (origin, callback) => {
+    // Разрешаем запросы без origin (curl, мобильные приложения, Postman)
+    if (!origin) return callback(null, true)
+    if (allowedOrigins.includes(origin)) return callback(null, true)
+    callback(new Error(`CORS: origin ${origin} не разрешён`))
+  }
+}))
 app.use(express.json({ limit: '10mb' }))
 app.use(express.urlencoded({ extended: true, limit: '10mb' }))
 
