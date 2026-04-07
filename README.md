@@ -1,4 +1,4 @@
-# 🗂 НИШ Инвентаризация — Backend API
+# НИШ Инвентаризация — Backend API
 
 > REST API для системы учёта и инвентаризации основных средств.  
 > Разработан для НИШ (Назарбаев Интеллектуальные Школы), Туркестан, Казахстан.
@@ -11,6 +11,7 @@
 
 - [Быстрый старт](#быстрый-старт)
 - [Переменные окружения](#переменные-окружения)
+- [Swagger UI](#swagger-ui)
 - [Структура проекта](#структура-проекта)
 - [Модели данных](#модели-данных)
 - [API Endpoints](#api-endpoints)
@@ -46,7 +47,8 @@ npm run pm2:start # продакшн через PM2
 ```
 
 Сервер запустится на `http://localhost:8888`.  
-Health check: `GET /api/health`
+Health check: `GET /api/health`  
+Swagger UI: `http://localhost:8888/api/docs`
 
 ---
 
@@ -59,6 +61,19 @@ PORT=8888
 NODE_ENV=production
 DATABASE_URL="file:./prisma/inventory.db"
 ```
+
+---
+
+## Swagger UI
+
+Интерактивная документация доступна после запуска сервера:
+
+| URL | Описание |
+|---|---|
+| `http://localhost:8888/api/docs` | Swagger UI (браузер) |
+| `http://localhost:8888/api/docs.json` | OpenAPI 3.0 спецификация (JSON) |
+
+Спецификация хранится в `src/docs/swagger.js` — при добавлении новых эндпоинтов обновляйте её вручную.
 
 ---
 ## Архитектура

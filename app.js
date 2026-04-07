@@ -2,6 +2,7 @@ import express from 'express'
 import path from 'path'
 import cors from 'cors'
 import dotenv from 'dotenv'
+import swaggerUi from 'swagger-ui-express'
 
 import assetsRouter    from './src/routes/assetsRoutes.js'
 import inventoryRouter from './src/routes/inventoryRoutes.js'
@@ -9,6 +10,7 @@ import importRouter    from './src/routes/importRoutes.js'
 import locationsRouter from './src/routes/locationsRoutes.js'
 import statsRouter     from './src/routes/statsRoutes.js'
 import photosRouter    from './src/routes/photosRoutes.js'
+import { swaggerSpec } from './src/docs/swagger.js'
 
 dotenv.config()
 
@@ -31,6 +33,12 @@ if (isDev) {
 
 // ─── Статика ──────────────────────────────────────────────────
 app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')))
+
+// ─── Swagger UI ───────────────────────────────────────────────
+app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
+  customSiteTitle: 'НИШ Инвентаризация — API Docs',
+}))
+app.get('/api/docs.json', (_req, res) => res.json(swaggerSpec))
 
 // ─── Routes ───────────────────────────────────────────────────
 app.use('/api/assets',    assetsRouter)
