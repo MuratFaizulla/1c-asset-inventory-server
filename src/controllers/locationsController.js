@@ -60,8 +60,12 @@ export const getEmployees = async (req, res) => {
 // GET /api/locations/:id/assets — все ОС в конкретном кабинете с поиском и сортировкой
 export const getLocationAssets = async (req, res) => {
   try {
-    const { search, sortBy = 'name', sortDir = 'asc' } = req.query
+    const { search, sortDir = 'asc' } = req.query
     const locationId = Number(req.params.id)
+
+    const ALLOWED_SORT = ['name', 'inventoryNumber', 'barcode']
+    const sortBy = ALLOWED_SORT.includes(req.query.sortBy) ? req.query.sortBy : 'name'
+    const dir = sortDir === 'desc' ? 'desc' : 'asc'
 
     const where = {
       locationId,
@@ -78,7 +82,7 @@ export const getLocationAssets = async (req, res) => {
       prisma.asset.findMany({
         where,
         include: { responsiblePerson: true, employee: true },
-        orderBy: { [sortBy]: sortDir }
+        orderBy: { [sortBy]: dir }
       }),
       prisma.location.findUnique({ where: { id: locationId } }),
       prisma.asset.count({ where }),

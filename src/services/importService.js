@@ -12,10 +12,39 @@ async function createManyIgnoreDuplicates(model, items) {
   }
 }
 
+const REQUIRED_COLUMNS = ['ОС', 'Инвентарный номер']
+
 export async function parseAndBuildMaps(buffer) {
-  const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: false })
+  if (!buffer || buffer.length === 0) {
+    throw Object.assign(new Error('Файл пустой'), { status: 400 })
+  }
+
+  let workbook
+  try {
+    workbook = XLSX.read(buffer, { type: 'buffer', cellDates: false })
+  } catch {
+    throw Object.assign(new Error('Не удалось прочитать файл — убедитесь, что это файл Excel (.xlsx)'), { status: 400 })
+  }
+
+  if (!workbook.SheetNames.length) {
+    throw Object.assign(new Error('Файл Excel не содержит листов'), { status: 400 })
+  }
+
   const sheet = workbook.Sheets[workbook.SheetNames[0]]
   const rows = XLSX.utils.sheet_to_json(sheet, { defval: null })
+
+  if (rows.length === 0) {
+    throw Object.assign(new Error('Первый лист файла не содержит данных'), { status: 400 })
+  }
+
+  const firstRow = rows[0]
+  const missingColumns = REQUIRED_COLUMNS.filter(col => !(col in firstRow))
+  if (missingColumns.length > 0) {
+    throw Object.assign(
+      new Error(`В файле отсутствуют обязательные столбцы: ${missingColumns.join(', ')}`),
+      { status: 400 }
+    )
+  }
 
   // Собираем уникальные значения справочников из файла
   const orgNames = new Set()

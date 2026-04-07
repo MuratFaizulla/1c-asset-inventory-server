@@ -160,6 +160,24 @@ export const scanItem = async (req, res) => {
 
 
 
+// PATCH /api/inventory/:id/item/:itemId/check — переключить отметку "внесено в 1С"
+export const toggleItemCheck = async (req, res) => {
+  try {
+    const item = await prisma.inventoryItem.findUnique({
+      where: { id: Number(req.params.itemId) }
+    })
+    if (!item) return res.status(404).json({ error: 'Запись не найдена' })
+
+    const updated = await prisma.inventoryItem.update({
+      where: { id: item.id },
+      data:  { checkedAt: item.checkedAt ? null : new Date() }
+    })
+    res.json({ id: updated.id, checkedAt: updated.checkedAt })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+}
+
 export const cancelItem = async (req, res) => {
   try {
     const item = await prisma.inventoryItem.update({
