@@ -14,7 +14,7 @@ async function createManyIgnoreDuplicates(model, items) {
 
 const REQUIRED_COLUMNS = ['ОС', 'Инвентарный номер']
 
-export async function parseAndBuildMaps(buffer) {
+export async function parseAndBuildMaps(buffer, { dryRun = false } = {}) {
   if (!buffer || buffer.length === 0) {
     throw Object.assign(new Error('Файл пустой'), { status: 400 })
   }
@@ -82,33 +82,36 @@ export async function parseAndBuildMaps(buffer) {
   const newLocs = [...locNames].filter(n => !locMap[n]).map(name => ({ name }))
   const newEmps = [...empNames].filter(n => !empMap[n]).map(fullName => ({ fullName }))
 
-  if (newOrgs.length) {
-    await createManyIgnoreDuplicates(prisma.organization, newOrgs)
-    const created = await prisma.organization.findMany({
-      where: { name: { in: newOrgs.map(o => o.name) } }
-    })
-    created.forEach(o => orgMap[o.name] = o)
-  }
-  if (newMols.length) {
-    await createManyIgnoreDuplicates(prisma.responsiblePerson, newMols)
-    const created = await prisma.responsiblePerson.findMany({
-      where: { fullName: { in: newMols.map(o => o.fullName) } }
-    })
-    created.forEach(o => molMap[o.fullName] = o)
-  }
-  if (newLocs.length) {
-    await createManyIgnoreDuplicates(prisma.location, newLocs)
-    const created = await prisma.location.findMany({
-      where: { name: { in: newLocs.map(o => o.name) } }
-    })
-    created.forEach(o => locMap[o.name] = o)
-  }
-  if (newEmps.length) {
-    await createManyIgnoreDuplicates(prisma.employee, newEmps)
-    const created = await prisma.employee.findMany({
-      where: { fullName: { in: newEmps.map(o => o.fullName) } }
-    })
-    created.forEach(o => empMap[o.fullName] = o)
+  // В режиме dryRun (preview) не создаём записи в справочниках
+  if (!dryRun) {
+    if (newOrgs.length) {
+      await createManyIgnoreDuplicates(prisma.organization, newOrgs)
+      const created = await prisma.organization.findMany({
+        where: { name: { in: newOrgs.map(o => o.name) } }
+      })
+      created.forEach(o => orgMap[o.name] = o)
+    }
+    if (newMols.length) {
+      await createManyIgnoreDuplicates(prisma.responsiblePerson, newMols)
+      const created = await prisma.responsiblePerson.findMany({
+        where: { fullName: { in: newMols.map(o => o.fullName) } }
+      })
+      created.forEach(o => molMap[o.fullName] = o)
+    }
+    if (newLocs.length) {
+      await createManyIgnoreDuplicates(prisma.location, newLocs)
+      const created = await prisma.location.findMany({
+        where: { name: { in: newLocs.map(o => o.name) } }
+      })
+      created.forEach(o => locMap[o.name] = o)
+    }
+    if (newEmps.length) {
+      await createManyIgnoreDuplicates(prisma.employee, newEmps)
+      const created = await prisma.employee.findMany({
+        where: { fullName: { in: newEmps.map(o => o.fullName) } }
+      })
+      created.forEach(o => empMap[o.fullName] = o)
+    }
   }
 
   // Строим итоговый список ОС из файла

@@ -316,7 +316,7 @@ export const relocateAll = async (req, res) => {
 export const getRelocated = async (req, res) => {
   try {
     const items = await prisma.inventoryItem.findMany({
-      where: { sessionId: Number(req.params.id), note: { contains: 'Перемещён' } },
+      where: { sessionId: Number(req.params.id), status: 'FOUND', note: { contains: 'Перемещён' } },
       include: {
         asset: {
           include: { location: true, responsiblePerson: true, employee: true, organization: true }
@@ -411,7 +411,8 @@ export const exportRelocated = async (req, res) => {
     const relocated = await prisma.inventoryItem.findMany({
       where: {
         sessionId: Number(req.params.id),
-        note:      { startsWith: 'Перемещён' },
+        status:    'FOUND',
+        note:      { contains: 'Перемещён' },
       },
       include: {
         asset: {
@@ -517,15 +518,16 @@ export const addAssetsToSession = async (req, res) => {
       return res.json({ added: 0, message: 'Нет новых ОС для добавления' })
     }
 
-    // SQLite не поддерживает createMany — создаём по одному
-    for (const a of newAssets) {
-      try {
-        await prisma.inventoryItem.create({
-          data: { sessionId, assetId: a.id, status: 'PENDING' }
-        })
-      } catch (e) {
-        // пропускаем дубли
-      }
+    // SQLite не поддерживает createMany — создаём батчами по 50
+    const BATCH = 50
+    for (let i = 0; i < newAssets.length; i += BATCH) {
+      await Promise.all(
+        newAssets.slice(i, i + BATCH).map(a =>
+          prisma.inventoryItem.create({
+            data: { sessionId, assetId: a.id, status: 'PENDING' }
+          }).catch(() => {}) // пропускаем дубли
+        )
+      )
     }
 
     res.json({
@@ -545,13 +547,23 @@ export const getStatsByLocation = async (req, res) => {
     const sessionId = Number(req.params.id)
 
     const items = await prisma.inventoryItem.findMany({
-      where:   { sessionId },
-      include: {
+      where:  { sessionId },
+      select: {
+        id:        true,
+        status:    true,
+        note:      true,
+        scannedAt: true,
+        scannedBy: true,
         asset: {
-          include: {
-            location:          true,
-            responsiblePerson: true,
-            employee:          true,
+          select: {
+            id:              true,
+            name:            true,
+            inventoryNumber: true,
+            barcode:         true,
+            locationId:      true,
+            location:        { select: { id: true, name: true } },
+            responsiblePerson: { select: { fullName: true } },
+            employee:          { select: { fullName: true } },
           }
         }
       }

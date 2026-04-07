@@ -11,7 +11,7 @@ export const previewImport = async (req, res) => {
     //         full    — полный (показывает ОС которых нет в файле)
     const mode = req.body.mode || 'partial'
 
-    const { parsed, skipped, total } = await parseAndBuildMaps(req.file.buffer)
+    const { parsed, skipped, total } = await parseAndBuildMaps(req.file.buffer, { dryRun: true })
 
     // Загружаем существующие ОС по инвентарным номерам из файла
     const invNumbers = parsed.map(p => p.inventoryNumber)

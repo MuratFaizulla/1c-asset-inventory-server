@@ -17,7 +17,7 @@
 - [API Endpoints](#api-endpoints)
 - [Скрипты npm](#скрипты-npm)
 - [Деплой](#деплой)
-- [Известные проблемы](#известные-проблемы)
+- [Рекомендации](#рекомендации)
 
 ---
 
@@ -249,110 +249,10 @@ npm run pm2:logs
 
 ---
 
-## Известные проблемы
+## Рекомендации
 
-### 🔴 Критические
-
-**1. Неправильный порядок маршрутов в `inventoryRoutes.js`**
-
-`GET /:id` зарегистрирован раньше `/:id/add-assets` и `/:id/stats/by-location`, из-за чего Express перехватывает эти запросы и они никогда не достигают своих обработчиков.
-
-```js
-// ❌ Сейчас — /:id поглощает всё ниже
-router.get('/:id', getSessionById)
-router.delete('/:id', deleteSession)
-router.post('/:id/add-assets', addAssetsToSession)       // недостижимо
-router.get('/:id/stats/by-location', getStatsByLocation) // недостижимо
-
-// ✅ Исправление — /:id и DELETE /:id всегда в самом конце
-router.post('/:id/add-assets', addAssetsToSession)
-router.get('/:id/stats/by-location', getStatsByLocation)
-router.get('/:id', getSessionById)
-router.delete('/:id', deleteSession)
-```
-
-**2. Небезопасная сортировка в `getLocationAssets`**
-
-`sortBy` из `req.query` передаётся напрямую в Prisma без валидации.
-
-```js
-// ❌ Опасно
-orderBy: { [sortBy]: sortDir }
-
-// ✅ Исправление
-const ALLOWED = ['name', 'inventoryNumber', 'createdAt']
-const safeSortBy = ALLOWED.includes(sortBy) ? sortBy : 'name'
-orderBy: { [safeSortBy]: sortDir === 'desc' ? 'desc' : 'asc' }
-```
-
----
-
-### 🟡 Производительность
-
-**3. N+1 запросов в `addAssetsToSession`**
-
-Каждая ОС создаётся отдельным `await` в цикле. При 500+ ОС заметно тормозит.
-
-```js
-// ❌ Медленно
-for (const a of newAssets) {
-  await prisma.inventoryItem.create({ ... })
-}
-
-// ✅ Батчи с параллельным выполнением
-const BATCH = 50
-for (let i = 0; i < newAssets.length; i += BATCH) {
-  await Promise.all(
-    newAssets.slice(i, i + BATCH).map(a =>
-      prisma.inventoryItem.create({ data: { sessionId, assetId: a.id, status: 'PENDING' } })
-        .catch(() => {}) // пропуск дублей
-    )
-  )
-}
-```
-
-**4. `getStatsByLocation` загружает все items в память**
-
-При большой сессии (1000+ ОС) все записи с вложенными объектами тянутся в JS. Стоит перенести агрегацию на сторону БД через `groupBy`.
-
----
-
-### 🟠 Логика и безопасность
-
-**5. `importService.js` мутирует БД при preview**
-
-`parseAndBuildMaps` создаёт новые записи в справочниках (кабинеты, МОЛ, организации) даже при запросе `/preview`, который должен быть read-only.
-
-```js
-// ✅ Решение — добавить флаг dryRun
-export async function parseAndBuildMaps(buffer, { dryRun = false } = {}) {
-  if (!dryRun && newLocs.length) {
-    await createManyIgnoreDuplicates(prisma.location, newLocs)
-  }
-}
-```
-
-**6. `getRelocated` — ненадёжная фильтрация по `note`**
-
-Фильтрует по тексту примечания (`note: { contains: 'Перемещён' }`). Если пользователь вручную задаёт похожее примечание — ОС попадёт в список ошибочно. Нужно фильтровать по `status`.
-
-**7. CORS открыт для всех**
-
-```js
-// ❌ В продакшне опасно
-app.use(cors({ origin: '*' }))
-
-// ✅ Ограничить домен
-app.use(cors({ origin: 'https://nis-inventory.example.kz' }))
-```
-
-**8. Отсутствие аутентификации**
-
-API не защищён. Любой, кто знает адрес сервера, может читать и изменять данные. Рекомендуется добавить JWT или хотя бы статический API-ключ для write-операций.
-
-**9. Фото хранятся как base64 в SQLite**
-
-При большом количестве фото это раздувает файл БД и замедляет запросы. Рекомендуется хранить файлы на диске (папка `uploads/`), а в БД держать только путь.
+- **Аутентификация** — API не защищён. Рекомендуется добавить JWT или статический API-ключ для write-операций.
+- **Фото** — хранятся как base64 в SQLite. При большом количестве фото рекомендуется хранить файлы на диске, а в БД держать только путь.
 
 ---
 
