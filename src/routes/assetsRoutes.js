@@ -33,18 +33,3 @@ router.get('/:id', getAssetById)
 router.get('/:id/history', getAssetHistory)
 
 export default router
-
-
-// ```
-
-// ---
-
-// Итого структура после этого:
-// ```
-// src/
-// ├── services/
-// │   └── prisma.js              ← новый (один раз на весь сервер)
-// ├── controllers/
-// │   └── assetsController.js    ← новый (вся логика)
-// └── routes/
-//     └── assets.js              ← заменить (только маршруты)

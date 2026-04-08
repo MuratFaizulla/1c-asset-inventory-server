@@ -17,19 +17,3 @@ router.post('/apply', upload.single('file'), applyImport)
 router.delete('/orphaned', deleteOrphaned)
 
 export default router
-// ```
-
-// ---
-
-// Итоговая структура для этого модуля:
-// ```
-// src/
-// ├── utils/
-// │   └── importHelpers.js      ← parseDate, parseNumber, getChanges, humanizeChanges
-// ├── services/
-// │   ├── prisma.js             ← уже есть
-// │   └── importService.js      ← parseAndBuildMaps (работа с Excel + справочники)
-// ├── controllers/
-// │   └── importController.js   ← previewImport, applyImport, deleteOrphaned
-// └── routes/
-//     └── importRoutes.js       ← только маршруты

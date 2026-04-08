@@ -15,13 +15,14 @@ export const swaggerSpec = {
     { url: 'http://0.0.0.0:8888',  description: 'Production' },
   ],
   tags: [
-    { name: 'Health',    description: 'Проверка состояния сервера' },
-    { name: 'Assets',    description: 'Основные средства (ОС)' },
-    { name: 'Inventory', description: 'Сессии инвентаризации' },
-    { name: 'Import',    description: 'Импорт данных из 1С (Excel)' },
-    { name: 'Locations', description: 'Кабинеты и справочники' },
-    { name: 'Stats',     description: 'Дашборд и статистика' },
-    { name: 'Photos',    description: 'Фотографии ОС' },
+    { name: 'Health',     description: 'Проверка состояния сервера' },
+    { name: 'Assets',     description: 'Основные средства (ОС)' },
+    { name: 'Inventory',  description: 'Сессии инвентаризации' },
+    { name: 'Import',     description: 'Импорт данных из 1С (Excel)' },
+    { name: 'Locations',  description: 'Кабинеты и справочники' },
+    { name: 'Stats',      description: 'Дашборд и статистика' },
+    { name: 'Photos',     description: 'Фотографии ОС' },
+    { name: 'Collection', description: 'Приём техники (сдача ноутбуков и др.)' },
   ],
   components: {
     schemas: {
@@ -148,7 +149,7 @@ export const swaggerSpec = {
       },
       SessionStatus: {
         type: 'string',
-        enum: ['IN_PROGRESS', 'COMPLETED', 'CANCELLED'],
+        enum: ['IN_PROGRESS', 'COMPLETED', 'CLOSED', 'CANCELLED'],
       },
       InventoryItem: {
         type: 'object',
@@ -541,6 +542,11 @@ export const swaggerSpec = {
       get: {
         tags: ['Inventory'],
         summary: 'Список всех сессий инвентаризации',
+        parameters: [
+          { name: 'locationId',     in: 'query', schema: { type: 'integer' }, description: 'Фильтр по кабинету' },
+          { name: 'organizationId', in: 'query', schema: { type: 'integer' }, description: 'Фильтр по организации' },
+          { name: 'status',         in: 'query', schema: { type: 'string', enum: ['IN_PROGRESS', 'COMPLETED', 'CANCELLED'] }, description: 'Фильтр по статусу' },
+        ],
         responses: {
           200: {
             description: 'Список сессий',
@@ -614,6 +620,32 @@ export const swaggerSpec = {
           404: { $ref: '#/components/responses/NotFound' },
         },
       },
+      patch: {
+        tags: ['Inventory'],
+        summary: 'Обновить метаданные сессии (название, кабинет, организация)',
+        parameters: [{ $ref: '#/components/parameters/sessionId' }],
+        requestBody: {
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  name:           { type: 'string',  example: 'Инвентаризация кабинет 205 — апрель 2026' },
+                  locationId:     { type: 'integer', example: 7,  description: 'null — сбросить кабинет' },
+                  organizationId: { type: 'integer', example: 1,  description: 'null — сбросить организацию' },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          200: {
+            description: 'Обновлённая сессия',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/InventorySession' } } },
+          },
+          404: { $ref: '#/components/responses/NotFound' },
+        },
+      },
       delete: {
         tags: ['Inventory'],
         summary: 'Удалить сессию и все её позиции (транзакция)',
@@ -624,6 +656,60 @@ export const swaggerSpec = {
             content: {
               'application/json': {
                 schema: { type: 'object', properties: { deleted: { type: 'boolean', example: true } } },
+              },
+            },
+          },
+          404: { $ref: '#/components/responses/NotFound' },
+        },
+      },
+    },
+
+    '/api/inventory/{id}/close': {
+      patch: {
+        tags: ['Inventory'],
+        summary: 'Закрыть сессию вручную (статус → CLOSED)',
+        description: 'Закрывает активную сессию без изменения статусов ОС. Используйте когда сканирование завершено частично и продолжать не планируется.',
+        parameters: [{ $ref: '#/components/parameters/sessionId' }],
+        responses: {
+          200: {
+            description: 'Сессия закрыта',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/InventorySession' } } },
+          },
+          400: { $ref: '#/components/responses/BadRequest' },
+          404: { $ref: '#/components/responses/NotFound' },
+        },
+      },
+    },
+
+    '/api/inventory/{id}/cancel': {
+      patch: {
+        tags: ['Inventory'],
+        summary: 'Отменить сессию (статус → CANCELLED)',
+        description: 'Нельзя отменить уже завершённую сессию — сначала переоткройте её.',
+        parameters: [{ $ref: '#/components/parameters/sessionId' }],
+        responses: {
+          200: {
+            description: 'Сессия отменена',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/InventorySession' } } },
+          },
+          400: { $ref: '#/components/responses/BadRequest' },
+          404: { $ref: '#/components/responses/NotFound' },
+        },
+      },
+    },
+
+    '/api/inventory/{id}/reopen': {
+      patch: {
+        tags: ['Inventory'],
+        summary: 'Переоткрыть завершённую или отменённую сессию',
+        description: 'Все позиции `NOT_FOUND` возвращаются в `PENDING`. Статус сессии → `IN_PROGRESS`.',
+        parameters: [{ $ref: '#/components/parameters/sessionId' }],
+        responses: {
+          200: {
+            description: 'Сессия переоткрыта',
+            content: {
+              'application/json': {
+                schema: { type: 'object', properties: { reopened: { type: 'boolean', example: true } } },
               },
             },
           },
@@ -730,6 +816,35 @@ export const swaggerSpec = {
             },
           },
           400: { $ref: '#/components/responses/BadRequest' },
+        },
+      },
+    },
+
+    '/api/inventory/{id}/item/{itemId}/check': {
+      patch: {
+        tags: ['Inventory'],
+        summary: 'Переключить отметку "внесено в 1С" (checkedAt)',
+        description: 'Если `checkedAt` не установлен — устанавливает текущее время. Если установлен — сбрасывает в `null`.',
+        parameters: [
+          { $ref: '#/components/parameters/sessionId' },
+          { $ref: '#/components/parameters/itemId' },
+        ],
+        responses: {
+          200: {
+            description: 'Новое состояние',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    id:        { type: 'integer', example: 100 },
+                    checkedAt: { type: 'string', format: 'date-time', nullable: true },
+                  },
+                },
+              },
+            },
+          },
+          404: { $ref: '#/components/responses/NotFound' },
         },
       },
     },
@@ -848,7 +963,7 @@ export const swaggerSpec = {
       get: {
         tags: ['Inventory'],
         summary: 'Список перемещённых ОС',
-        description: 'Возвращает позиции, в примечании которых содержится слово «Перемещён».',
+        description: 'Позиции со статусом `FOUND`, в примечании которых есть «Перемещ» (охватывает одиночные и массовые перемещения).',
         parameters: [{ $ref: '#/components/parameters/sessionId' }],
         responses: {
           200: {
@@ -1243,6 +1358,318 @@ export const swaggerSpec = {
             },
           },
           404: { $ref: '#/components/responses/NotFound' },
+        },
+      },
+    },
+
+    // ─── Collection ──────────────────────────────────────────────
+    '/api/collection/code': {
+      get: {
+        tags: ['Collection'],
+        summary: 'Текущий код подтверждения (для администратора)',
+        description: 'Код меняется каждые 8 часов. Используется для удаления сессий, отмены сканирований и переоткрытия.',
+        responses: {
+          200: {
+            description: 'Код и время до смены',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    code:             { type: 'string',  example: '758C51' },
+                    expiresInMinutes: { type: 'integer', example: 439 },
+                    hint:             { type: 'string',  example: 'Код меняется каждые 8 часов' },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+
+    '/api/collection': {
+      get: {
+        tags: ['Collection'],
+        summary: 'Список сессий приёма техники',
+        responses: {
+          200: {
+            description: 'Список сессий',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      id:        { type: 'integer' },
+                      name:      { type: 'string', example: 'Сдача ноутбуков — май 2026' },
+                      status:    { type: 'string', enum: ['OPEN', 'CLOSED'] },
+                      assetType: { type: 'string', example: 'Ноутбук', nullable: true },
+                      deadline:  { type: 'string', format: 'date-time', nullable: true },
+                      createdBy: { type: 'string', nullable: true },
+                      createdAt: { type: 'string', format: 'date-time' },
+                      closedAt:  { type: 'string', format: 'date-time', nullable: true },
+                      _count:    { type: 'object', properties: { items: { type: 'integer' } } },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      post: {
+        tags: ['Collection'],
+        summary: 'Создать сессию приёма техники',
+        description: 'Создаёт сессию и автоматически добавляет все ОС по фильтру `assetType`.',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['name'],
+                properties: {
+                  name:      { type: 'string',  example: 'Сдача ноутбуков — май 2026' },
+                  assetType: { type: 'string',  example: 'Ноутбук', description: 'Фильтр по типу ОС' },
+                  deadline:  { type: 'string',  format: 'date-time', example: '2026-05-30T18:00:00.000Z' },
+                  createdBy: { type: 'string',  example: 'admin' },
+                  note:      { type: 'string',  example: 'Учителя уходят в отпуск' },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          201: { description: 'Сессия создана' },
+          400: { $ref: '#/components/responses/BadRequest' },
+        },
+      },
+    },
+
+    '/api/collection/{id}': {
+      get: {
+        tags: ['Collection'],
+        summary: 'Данные сессии + позиции + статистика',
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }],
+        responses: {
+          200: { description: 'Сессия с позициями и stats: { total, returned, damaged, pending }' },
+          404: { $ref: '#/components/responses/NotFound' },
+        },
+      },
+      patch: {
+        tags: ['Collection'],
+        summary: 'Редактировать сессию (название, дедлайн, примечание)',
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }],
+        requestBody: {
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  name:      { type: 'string',  example: 'Сдача ноутбуков — май 2026' },
+                  deadline:  { type: 'string',  format: 'date-time', nullable: true },
+                  note:      { type: 'string',  nullable: true },
+                  createdBy: { type: 'string',  nullable: true },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          200: { description: 'Обновлённая сессия' },
+          404: { $ref: '#/components/responses/NotFound' },
+        },
+      },
+      delete: {
+        tags: ['Collection'],
+        summary: 'Удалить сессию и все позиции (требует code в body)',
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['code'],
+                properties: {
+                  code: { type: 'string', example: '758C51', description: 'Код из GET /api/collection/code' },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          200: { description: 'Удалено', content: { 'application/json': { schema: { type: 'object', properties: { deleted: { type: 'boolean' } } } } } },
+          403: { description: 'Неверный код' },
+        },
+      },
+    },
+
+    '/api/collection/{id}/scan': {
+      post: {
+        tags: ['Collection'],
+        summary: 'Принять технику — сканировать штрих-код или инв. номер',
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['barcode'],
+                properties: {
+                  barcode:    { type: 'string', example: '123456789012' },
+                  status:     { type: 'string', enum: ['RETURNED', 'DAMAGED'], default: 'RETURNED' },
+                  returnedBy: { type: 'string', example: 'Иванов А.А.' },
+                  note:       { type: 'string', example: 'Царапина на крышке' },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          200: { description: 'Результат сканирования' },
+          404: { $ref: '#/components/responses/NotFound' },
+        },
+      },
+    },
+
+    '/api/collection/{id}/close': {
+      patch: {
+        tags: ['Collection'],
+        summary: 'Закрыть сессию (статус → CLOSED)',
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }],
+        responses: { 200: { description: 'Сессия закрыта' } },
+      },
+    },
+
+    '/api/collection/{id}/reopen': {
+      patch: {
+        tags: ['Collection'],
+        summary: 'Открыть закрытую сессию (требует code)',
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['code'],
+                properties: {
+                  code: { type: 'string', example: '758C51', description: 'Код из GET /api/collection/code' },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          200: { description: 'Сессия переоткрыта' },
+          403: { description: 'Неверный код' },
+          404: { $ref: '#/components/responses/NotFound' },
+        },
+      },
+    },
+
+    '/api/collection/{id}/item/{itemId}': {
+      patch: {
+        tags: ['Collection'],
+        summary: 'Обновить статус / примечание позиции',
+        parameters: [
+          { name: 'id',     in: 'path', required: true, schema: { type: 'integer' } },
+          { name: 'itemId', in: 'path', required: true, schema: { type: 'integer' } },
+        ],
+        requestBody: {
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  status:     { type: 'string', enum: ['PENDING', 'RETURNED', 'DAMAGED'] },
+                  note:       { type: 'string' },
+                  returnedBy: { type: 'string' },
+                },
+              },
+            },
+          },
+        },
+        responses: { 200: { description: 'Обновлённая позиция' } },
+      },
+    },
+
+    '/api/collection/{id}/item/{itemId}/cancel': {
+      patch: {
+        tags: ['Collection'],
+        summary: 'Отменить — вернуть позицию в PENDING (требует code)',
+        parameters: [
+          { name: 'id',     in: 'path', required: true, schema: { type: 'integer' } },
+          { name: 'itemId', in: 'path', required: true, schema: { type: 'integer' } },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['code'],
+                properties: {
+                  code: { type: 'string', example: '758C51', description: 'Код из GET /api/collection/code' },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          200: { description: 'Позиция сброшена в PENDING' },
+          403: { description: 'Неверный код' },
+          404: { $ref: '#/components/responses/NotFound' },
+        },
+      },
+    },
+
+    '/api/collection/{id}/pending': {
+      get: {
+        tags: ['Collection'],
+        summary: 'Список тех кто НЕ сдал технику (статус PENDING)',
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }],
+        responses: { 200: { description: 'Список позиций PENDING с данными сотрудника' } },
+      },
+    },
+
+    '/api/collection/{id}/returned': {
+      get: {
+        tags: ['Collection'],
+        summary: 'Список тех кто сдал технику (RETURNED + DAMAGED)',
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }],
+        responses: { 200: { description: 'Список принятых позиций' } },
+      },
+    },
+
+    '/api/collection/{id}/export': {
+      get: {
+        tags: ['Collection'],
+        summary: 'Экспорт полной ведомости в Excel',
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }],
+        responses: {
+          200: {
+            description: 'Excel файл',
+            content: { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': { schema: { type: 'string', format: 'binary' } } },
+          },
+        },
+      },
+    },
+
+    '/api/collection/{id}/export-pending': {
+      get: {
+        tags: ['Collection'],
+        summary: 'Экспорт списка должников в Excel (для распечатки)',
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }],
+        responses: {
+          200: {
+            description: 'Excel файл с должниками + колонка "Подпись"',
+            content: { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': { schema: { type: 'string', format: 'binary' } } },
+          },
         },
       },
     },

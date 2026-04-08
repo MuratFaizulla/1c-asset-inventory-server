@@ -17,6 +17,10 @@ import {
   deleteSession,
   addAssetsToSession,
   getStatsByLocation,
+  updateSession,
+  closeSession,
+  cancelSession,
+  reopenSession,
 } from '../controllers/inventoryController.js'
 
 const router = Router()
@@ -66,8 +70,20 @@ router.post('/:id/add-assets', addAssetsToSession)
 // Статистика по кабинетам — для отображения прогресса по помещениям
 router.get('/:id/stats/by-location', getStatsByLocation)
 
+// Закрыть сессию вручную (статусы ОС не меняются)
+router.patch('/:id/close', closeSession)
+
+// Переоткрыть завершённую сессию
+router.patch('/:id/reopen', reopenSession)
+
+// Отменить сессию
+router.patch('/:id/cancel', cancelSession)
+
 // ВАЖНО: /:id всегда в конце — иначе Express глотает все маршруты выше
 router.get('/:id', getSessionById)
+
+// Обновить метаданные сессии (название, кабинет, организация)
+router.patch('/:id', updateSession)
 
 // DELETE тоже в конце
 router.delete('/:id', deleteSession)

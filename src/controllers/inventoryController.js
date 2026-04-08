@@ -1,8 +1,23 @@
-import prisma from '../services/prisma.js'
+import prisma  from '../services/prisma.js'
+import crypto  from 'crypto'
+
+// Тот же механизм кода что и в collection — меняется каждые 8 часов
+function getActionCode() {
+  const SECRET = process.env.DELETE_CODE_SECRET || 'nis-collection-secret-key'
+  const period = Math.floor(Date.now() / (8 * 60 * 60 * 1000))
+  return crypto.createHash('sha256').update(`${SECRET}-${period}`).digest('hex').slice(0, 6).toUpperCase()
+}
 
 export const getSessions = async (req, res) => {
   try {
+    const { locationId, organizationId, status } = req.query
+    const where = {}
+    if (locationId)     where.locationId     = Number(locationId)
+    if (organizationId) where.organizationId = Number(organizationId)
+    if (status)         where.status         = status
+
     const sessions = await prisma.inventorySession.findMany({
+      where,
       include: {
         location: true,
         organization: true,
@@ -180,8 +195,11 @@ export const toggleItemCheck = async (req, res) => {
 
 export const cancelItem = async (req, res) => {
   try {
+    const existing = await prisma.inventoryItem.findUnique({ where: { id: Number(req.params.itemId) } })
+    if (!existing) return res.status(404).json({ error: 'Запись не найдена' })
+
     const item = await prisma.inventoryItem.update({
-      where:   { id: Number(req.params.itemId) },
+      where:   { id: existing.id },
       data:    { status: 'PENDING', note: null, scannedAt: null, scannedBy: null },
       include: { asset: { include: { location: true } } }
     })
@@ -316,7 +334,7 @@ export const relocateAll = async (req, res) => {
 export const getRelocated = async (req, res) => {
   try {
     const items = await prisma.inventoryItem.findMany({
-      where: { sessionId: Number(req.params.id), status: 'FOUND', note: { contains: 'Перемещён' } },
+      where: { sessionId: Number(req.params.id), status: 'FOUND', note: { contains: 'Перемещ' } },
       include: {
         asset: {
           include: { location: true, responsiblePerson: true, employee: true, organization: true }
@@ -643,12 +661,82 @@ export const getStatsByLocation = async (req, res) => {
 
 
 
-//PATCH /:id/reopen — переоткрыть завершённую сессию Бывает нужно когда завершили случайно.
-export const reopenSession = async (req, res) => {
+// PATCH /:id — обновить метаданные сессии (название, кабинет, организация)
+export const updateSession = async (req, res) => {
+  try {
+    const { name, locationId, organizationId } = req.body
+    const session = await prisma.inventorySession.update({
+      where: { id: Number(req.params.id) },
+      data: {
+        ...(name             !== undefined && { name }),
+        ...(locationId       !== undefined && { locationId:     locationId     ? Number(locationId)     : null }),
+        ...(organizationId   !== undefined && { organizationId: organizationId ? Number(organizationId) : null }),
+      },
+      include: { location: true, organization: true, _count: { select: { items: true } } }
+    })
+    res.json(session)
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+}
+
+// PATCH /:id/close — закрыть сессию вручную (CLOSED), статусы ОС не меняются
+export const closeSession = async (req, res) => {
   try {
     const sessionId = Number(req.params.id)
+    const session = await prisma.inventorySession.findUnique({ where: { id: sessionId } })
+    if (!session) return res.status(404).json({ error: 'Сессия не найдена' })
+    if (session.status !== 'IN_PROGRESS') {
+      return res.status(400).json({ error: 'Закрыть можно только активную сессию' })
+    }
 
-    // Возвращаем все NOT_FOUND обратно в PENDING
+    const updated = await prisma.inventorySession.update({
+      where: { id: sessionId },
+      data:  { status: 'CLOSED', finishedAt: new Date() }
+    })
+    res.json(updated)
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+}
+
+// PATCH /:id/cancel — отменить сессию (CANCELLED) — требует код
+export const cancelSession = async (req, res) => {
+  try {
+    const { code } = req.body
+    if (!code) return res.status(400).json({ error: 'Поле code обязательно' })
+    if (code.toUpperCase() !== getActionCode()) {
+      return res.status(403).json({ error: 'Неверный код. Проверьте код на главной странице сервера' })
+    }
+
+    const sessionId = Number(req.params.id)
+    const session = await prisma.inventorySession.findUnique({ where: { id: sessionId } })
+    if (!session) return res.status(404).json({ error: 'Сессия не найдена' })
+    if (session.status === 'COMPLETED') {
+      return res.status(400).json({ error: 'Нельзя отменить завершённую сессию — сначала переоткройте её' })
+    }
+
+    const updated = await prisma.inventorySession.update({
+      where: { id: sessionId },
+      data:  { status: 'CANCELLED', finishedAt: new Date() }
+    })
+    res.json(updated)
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+}
+
+// PATCH /:id/reopen — переоткрыть завершённую сессию — требует код
+export const reopenSession = async (req, res) => {
+  try {
+    const { code } = req.body
+    if (!code) return res.status(400).json({ error: 'Поле code обязательно' })
+    if (code.toUpperCase() !== getActionCode()) {
+      return res.status(403).json({ error: 'Неверный код. Проверьте код на главной странице сервера' })
+    }
+
+    const sessionId = Number(req.params.id)
+
     await prisma.$transaction([
       prisma.inventoryItem.updateMany({
         where: { sessionId, status: 'NOT_FOUND' },

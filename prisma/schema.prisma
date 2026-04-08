@@ -52,6 +52,7 @@ model Asset {
   locationId          Int
   employee            Employee?         @relation(fields: [employeeId], references: [id])
   employeeId          Int?
+  collectionItems     CollectionItem[]
 
   assetType           String
   name                String
@@ -113,6 +114,50 @@ model InventoryItem {
   checkedAt DateTime?
 
   @@unique([sessionId, assetId])
+}
+
+// status: OPEN | CLOSED
+model CollectionSession {
+  id          Int       @id @default(autoincrement())
+  name        String
+  status      String    @default("OPEN")
+  assetType   String?                   // фильтр по типу ОС ("Ноутбук" и т.д.)
+  deadline    DateTime?                 // дедлайн сдачи
+  createdBy   String?
+  note        String?
+  createdAt   DateTime  @default(now())
+  closedAt    DateTime?
+
+  items       CollectionItem[]
+}
+
+// status: PENDING | RETURNED | DAMAGED | LOST
+model CollectionItem {
+  id          Int       @id @default(autoincrement())
+
+  session     CollectionSession @relation(fields: [sessionId], references: [id])
+  sessionId   Int
+  asset       Asset             @relation(fields: [assetId], references: [id])
+  assetId     Int
+
+  status      String    @default("PENDING")
+  returnedAt  DateTime?
+  returnedBy  String?
+  note        String?
+
+  logs        CollectionItemLog[]
+
+  @@unique([sessionId, assetId])
+}
+
+model CollectionItemLog {
+  id          Int       @id @default(autoincrement())
+  item        CollectionItem @relation(fields: [itemId], references: [id])
+  itemId      Int
+  action      String             // RETURNED | DAMAGED | LOST | CANCELLED
+  performedBy String?
+  note        String?
+  createdAt   DateTime  @default(now())
 }
 
 // Фото ОС — хранится по имени ОС (одно фото на все ОС с одинаковым названием)

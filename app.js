@@ -10,7 +10,8 @@ import inventoryRouter from './src/routes/inventoryRoutes.js'
 import importRouter    from './src/routes/importRoutes.js'
 import locationsRouter from './src/routes/locationsRoutes.js'
 import statsRouter     from './src/routes/statsRoutes.js'
-import photosRouter    from './src/routes/photosRoutes.js'
+import photosRouter      from './src/routes/photosRoutes.js'
+import collectionRouter  from './src/routes/collectionRoutes.js'
 import { swaggerSpec } from './src/docs/swagger.js'
 import prisma          from './src/services/prisma.js'
 
@@ -200,7 +201,33 @@ a{color:inherit;text-decoration:none}
       <div class="module-row"><span>/api/locations</span><span class="module-path">/api/locations</span><span class="module-count">6</span></div>
       <div class="module-row"><span>/api/photos</span><span class="module-path">/api/photos</span><span class="module-count">4</span></div>
       <div class="module-row"><span>/api/stats</span><span class="module-path">/api/stats</span><span class="module-count">1</span></div>
+      <div class="module-row"><span>/api/collection</span><span class="module-path">/api/collection</span><span class="module-count">12</span></div>
       <div class="module-row" style="border-bottom:none"><span style="color:#475569">/api/health</span><span class="module-path">/api/health</span><span class="module-count">1</span></div>
+    </div>
+  </div>
+
+  <!-- Код удаления/отмены -->
+  <div class="panel" style="border-color:#1e3a2a">
+    <div class="panel-title" style="color:#4ade80">🔐 Код подтверждения (сбор ОС)</div>
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap">
+      <div>
+        <div style="display:flex;align-items:center;gap:12px">
+          <div style="font-size:32px;font-weight:800;letter-spacing:8px;color:#4ade80;font-family:monospace" id="deleteCode">••••••</div>
+          <div style="display:flex;gap:8px">
+            <button id="toggleCodeBtn" onclick="toggleCode()" title="Показать/скрыть код" style="background:none;border:1px solid #334155;border-radius:6px;padding:6px 8px;cursor:pointer;color:#94a3b8;display:flex;align-items:center;transition:all 0.2s" onmouseover="this.style.borderColor='#4ade80';this.style.color='#4ade80'" onmouseout="this.style.borderColor='#334155';this.style.color='#94a3b8'">
+              <svg id="eyeIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+            <button id="copyCodeBtn" onclick="copyCode()" title="Копировать код" style="background:none;border:1px solid #334155;border-radius:6px;padding:6px 8px;cursor:pointer;color:#94a3b8;display:flex;align-items:center;transition:all 0.2s" onmouseover="this.style.borderColor='#4ade80';this.style.color='#4ade80'" onmouseout="this.style.borderColor='#334155';this.style.color='#94a3b8'">
+              <svg id="copyIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+            </button>
+          </div>
+        </div>
+        <div style="font-size:11px;color:#475569;margin-top:6px">Используется для удаления сессий и отмены сканирований</div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-size:11px;color:#475569;margin-bottom:4px">Сменится через</div>
+        <div style="font-size:18px;font-weight:700;color:#fbbf24;font-family:monospace" id="codeExpiry">—</div>
+      </div>
     </div>
   </div>
 
@@ -234,6 +261,21 @@ a{color:inherit;text-decoration:none}
 <script>
 const $ = id => document.getElementById(id)
 
+let _uptimeSec = 0
+function fmtUptime(s) {
+  const d = Math.floor(s / 86400)
+  const h = Math.floor((s % 86400) / 3600)
+  const m = Math.floor((s % 3600) / 60)
+  const sec = Math.floor(s % 60)
+  return d > 0 ? d+'д '+h+'ч '+m+'м' : h > 0 ? h+'ч '+m+'м '+sec+'с' : m+'м '+sec+'с'
+}
+setInterval(() => {
+  if (_uptimeSec > 0) {
+    _uptimeSec++
+    $('uptimeVal').textContent = fmtUptime(_uptimeSec)
+  }
+}, 1000)
+
 async function loadHealth() {
   try {
     const h = await fetch('/api/health').then(r => r.json())
@@ -242,7 +284,8 @@ async function loadHealth() {
     $('statusDot').className   = 'dot'   + (ok ? '' : ' error')
     $('statusText').textContent = ok ? 'Сервер работает' : 'Деградация'
 
-    $('uptimeVal').textContent = h.uptime || '—'
+    _uptimeSec = h.uptimeSeconds || 0
+    $('uptimeVal').textContent = fmtUptime(_uptimeSec)
     $('pidVal').textContent    = 'pid: ' + (h.pid || '—')
     $('nodeVer').textContent   = h.nodeVersion || '—'
     $('envVal').textContent    = h.env || '—'
@@ -299,8 +342,58 @@ async function loadStats() {
   }
 }
 
+let _realCode = ''
+let _codeVisible = false
+
+async function loadDeleteCode() {
+  try {
+    const d = await fetch('/api/collection/code').then(r => r.json())
+    _realCode = d.code || ''
+    $('deleteCode').textContent = _codeVisible ? (_realCode || '——————') : (_realCode ? '••••••' : '——————')
+    const mins = d.expiresInMinutes ?? 0
+    const h = Math.floor(mins / 60)
+    const m = mins % 60
+    $('codeExpiry').textContent = h > 0 ? h + ' ч ' + m + ' мин' : m + ' мин'
+  } catch {
+    _realCode = ''
+    $('deleteCode').textContent = '——————'
+    $('codeExpiry').textContent = '—'
+  }
+}
+
+function toggleCode() {
+  if (!_realCode) return
+  _codeVisible = !_codeVisible
+  $('deleteCode').textContent = _codeVisible ? _realCode : '••••••'
+  $('eyeIcon').innerHTML = _codeVisible
+    ? '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/>'
+    : '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>'
+}
+
+function copyCode() {
+  if (!_realCode) return
+  navigator.clipboard.writeText(_realCode).then(() => {
+    const btn = $('copyCodeBtn')
+    const orig = btn.onmouseout
+    $('copyIcon').innerHTML = '<polyline points="20 6 9 17 4 12"/>'
+    btn.style.borderColor = '#4ade80'
+    btn.style.color = '#4ade80'
+    btn.onmouseover = null
+    btn.onmouseout = null
+    setTimeout(() => {
+      $('copyIcon').innerHTML = '<rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>'
+      btn.style.borderColor = '#334155'
+      btn.style.color = '#94a3b8'
+      btn.onmouseover = orig
+      btn.onmouseout = orig
+    }, 1500)
+  })
+}
+
 loadHealth()
 loadStats()
+loadDeleteCode()
+setInterval(loadDeleteCode, 60000)
 </script>
 </body>
 </html>`)
@@ -318,7 +411,8 @@ app.use('/api/inventory', inventoryRouter)
 app.use('/api/import',    importRouter)
 app.use('/api/locations', locationsRouter)
 app.use('/api/stats',     statsRouter)
-app.use('/api/photos',    photosRouter)
+app.use('/api/photos',      photosRouter)
+app.use('/api/collection',  collectionRouter)
 
 // ─── Health check ─────────────────────────────────────────────
 app.get('/api/health', async (_req, res) => {
