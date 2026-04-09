@@ -74,9 +74,10 @@ export const scanBarcode = async (req, res) => {
         ]
       },
       include: {
-        location: true,
+        location:          true,
         responsiblePerson: true,
-        organization: true,
+        organization:      true,
+        employee:          true,
       }
     })
 
@@ -84,7 +85,12 @@ export const scanBarcode = async (req, res) => {
       return res.status(404).json({ error: 'ОС не найдено', barcode: req.params.barcode })
     }
 
-    res.json(asset)
+    // Ищем фото по нормализованному имени ОС
+    const nameKey  = asset.name.trim().toLowerCase().replace(/\s+/g, '_')
+    const photo    = await prisma.assetPhoto.findUnique({ where: { nameKey }, select: { nameKey: true } })
+    const photoKey = photo ? encodeURIComponent(nameKey) : null
+
+    res.json({ ...asset, photoKey })
   } catch (err) {
     res.status(500).json({ error: err.message })
   }

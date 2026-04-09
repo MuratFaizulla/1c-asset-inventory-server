@@ -26,11 +26,17 @@ const isDev = process.env.NODE_ENV !== 'production'
 // ─── Middleware ───────────────────────────────────────────────
 const allowedOrigins = process.env.CORS_ORIGIN
   ? process.env.CORS_ORIGIN.split(',').map(o => o.trim())
-  : ['http://localhost:5173']
+  : [
+    'http://10.35.14.13:200',
+    'http://10.35.77.50:8888',
+    'http://localhost:5173',
+    'http://localhost:8081',
+    'http://127.0.0.1:5173',
+  ]
 
 app.use(cors({
   origin: (origin, callback) => {
-    // Разрешаем запросы без origin (curl, мобильные приложения, Postman)
+    // Разрешаем запросы без origin (мобильные приложения, Postman)
     if (!origin) return callback(null, true)
     if (allowedOrigins.includes(origin)) return callback(null, true)
     callback(new Error(`CORS: origin ${origin} не разрешён`))
