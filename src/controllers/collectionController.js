@@ -111,6 +111,7 @@ export const deleteSession = async (req, res) => {
     }
     const sessionId = Number(req.params.id)
     await prisma.$transaction([
+      prisma.collectionItemLog.deleteMany({ where: { item: { sessionId } } }),
       prisma.collectionItem.deleteMany({ where: { sessionId } }),
       prisma.collectionSession.delete({ where: { id: sessionId } }),
     ])
